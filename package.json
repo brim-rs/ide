@@ -1,0 +1,67 @@
+{
+  "name": "brim-language",
+  "displayName": "brim Language",
+  "description": "brim Language for VSCode",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:brim",
+    "onCommand:extension.brimStart"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "brim",
+        "extensions": [
+          ".brim"
+        ],
+        "aliases": [
+          "brim"
+        ]
+      }
+    ],
+    "configuration": {
+      "brim-language-server.trace.server": {
+        "scope": "window",
+        "type": "string",
+        "enum": [
+          "off",
+          "messages",
+          "verbose"
+        ],
+        "default": "verbose",
+        "description": "Traces the communication between VS Code and the language server."
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run package",
+    "compile": "pnpm run lint && pnpm build",
+    "build": "cd server && cargo build --release && cd .. && tsup",
+    "watch": "npm-run-all -p watch:*",
+    "package": "pnpm run lint && pnpm build --production",
+    "lint": "eslint client"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "~20.17.24",
+    "@types/vscode": "^1.98.0",
+    "@typescript-eslint/eslint-plugin": "^8.26.1",
+    "@typescript-eslint/parser": "^8.26.1",
+    "eslint": "^9.22.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.8.2"
+  },
+  "packageManager": "pnpm@9.12.1+sha512.e5a7e52a4183a02d5931057f7a0dbff9d5e9ce3161e33fa68ae392125b79282a8a8a470a51dfc8a0ed86221442eb2fb57019b0990ed24fab519bf0e1bc5ccfc4",
+  "dependencies": {
+    "tsup": "^8.4.0",
+    "vscode-languageclient": "^9.0.1"
+  }
+}
