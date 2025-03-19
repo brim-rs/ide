@@ -13,7 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -84,9 +84,7 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, "initialized!")
-            .await;
+        info!("Server initialized");
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -94,8 +92,6 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, did_open: DidOpenTextDocumentParams) {
-        self.client.log_message(MessageType::INFO, "DID_OPEN").await;
-
         let path: PathBuf = url_to_path(&did_open.text_document.uri.to_string()).into();
 
         self.on_change(
@@ -111,10 +107,6 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
-        self.client
-            .log_message(MessageType::INFO, "DID_CHANGE")
-            .await;
-
         let path: PathBuf = url_to_path(&params.text_document.uri.to_string()).into();
 
         self.on_change(
@@ -129,13 +121,9 @@ impl LanguageServer for Backend {
         .await;
     }
     async fn did_save(&self, _: DidSaveTextDocumentParams) {
-        self.client.log_message(MessageType::INFO, "DID_SAVE").await;
     }
 
     async fn did_close(&self, _: DidCloseTextDocumentParams) {
-        self.client
-            .log_message(MessageType::INFO, "DID_CLOSE")
-            .await;
     }
 
     async fn completion(&self, _: CompletionParams) -> Result<Option<CompletionResponse>> {
@@ -146,32 +134,20 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
-        self.client
-            .log_message(MessageType::INFO, "configuration changed!")
-            .await;
+
     }
 
     async fn did_change_workspace_folders(&self, _: DidChangeWorkspaceFoldersParams) {
-        self.client
-            .log_message(MessageType::INFO, "workspace folders changed!")
-            .await;
     }
 
     async fn did_change_watched_files(&self, _: DidChangeWatchedFilesParams) {
-        self.client
-            .log_message(MessageType::INFO, "watched files have changed!")
-            .await;
     }
 
     async fn execute_command(&self, _: ExecuteCommandParams) -> Result<Option<Value>> {
-        self.client
-            .log_message(MessageType::INFO, "command executed!")
-            .await;
-
         match self.client.apply_edit(WorkspaceEdit::default()).await {
             Ok(res) if res.applied => self.client.log_message(MessageType::INFO, "applied").await,
             Ok(_) => self.client.log_message(MessageType::INFO, "rejected").await,
-            Err(err) => self.client.log_message(MessageType::ERROR, err).await,
+            Err(err) => error!("Error applying edit: {:?}", err),
         }
 
         Ok(None)
@@ -182,9 +158,6 @@ impl LanguageServer for Backend {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri.to_string();
-        self.client
-            .log_message(MessageType::LOG, "semantic_token_full")
-            .await;
 
         let module = self.modules.get(&uri).unwrap().value().clone();
         let rope = self.ropes.get(&uri).unwrap().value().clone();
@@ -202,9 +175,6 @@ impl LanguageServer for Backend {
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
         let uri = params.text_document.uri.to_string();
-        self.client
-            .log_message(MessageType::LOG, "semantic_token_range")
-            .await;
 
         let module = self.modules.get(&uri).unwrap().value().clone();
         let rope = self.ropes.get(&uri).unwrap().value().clone();
@@ -227,6 +197,7 @@ async fn main() {
         .with_env_filter(EnvFilter::new("info"))
         .with_ansi(false)
         .with_writer(std::io::stderr)
+        .without_time()
         .finish();
 
     tracing::subscriber::set_global_default(stderr_logger)

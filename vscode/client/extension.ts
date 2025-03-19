@@ -57,7 +57,6 @@ export async function activate(context: ExtensionContext) {
 			fileEvents: workspace.createFileSystemWatcher("**/.clientrc"),
 		},
 		outputChannel: outputChannel,
-		traceOutputChannel: outputChannel,
 	};
 
 	client = new LanguageClient(
