@@ -13,7 +13,10 @@ use tokio::net::{TcpListener, TcpStream};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-use log::{info, LevelFilter};
+use tracing::info;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Debug)]
 struct Backend {
@@ -220,10 +223,14 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    env_logger::builder()
-        .format_timestamp(None)
-        .filter_level(LevelFilter::Info)
-        .init();
+    let stderr_logger = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::new("info"))
+        .with_ansi(false)
+        .with_writer(std::io::stderr)
+        .finish();
+
+    tracing::subscriber::set_global_default(stderr_logger)
+        .expect("Failed to set global default subscriber");
 
     info!("Starting server");
     let (service, socket) = LspService::new(|client| Backend {
@@ -231,6 +238,5 @@ async fn main() {
         modules: Default::default(),
         ropes: Default::default(),
     });
-
     Server::new(stdin, stdout, socket).serve(service).await;
 }

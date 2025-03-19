@@ -1,9 +1,9 @@
 use std::path::PathBuf;
-use log::info;
 use crate::Backend;
 use percent_encoding::percent_decode;
 use ropey::Rope;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, MessageType, Position, Range, TextDocumentItem};
+use tracing::info;
 
 impl Backend {
     pub async fn on_change(&self, doc: TextDocumentItem, path: PathBuf) {

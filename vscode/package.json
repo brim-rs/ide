@@ -43,7 +43,7 @@
   "scripts": {
     "vscode:prepublish": "pnpm run package",
     "compile": "pnpm run lint && pnpm build",
-    "build": "cd server && cargo build --release && cd .. && tsup",
+    "build": "tsup",
     "watch": "npm-run-all -p watch:*",
     "package": "pnpm run lint && pnpm build --production",
     "lint": "eslint client"
