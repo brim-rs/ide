@@ -1,4 +1,3 @@
-use brim::token::TokenKind;
 use brim::transformer::HirModule;
 use ropey::Rope;
 use tower_lsp::lsp_types::{SemanticToken, SemanticTokenType};
@@ -16,7 +15,7 @@ pub const LEGEND_TYPE: &[SemanticTokenType] = &[
     SemanticTokenType::TYPE,
 ];
 
-pub fn semantic_tokens(module: HirModule, rope: Rope) -> Vec<SemanticToken> {
+pub fn semantic_tokens(module: &HirModule) -> Vec<SemanticToken> {
     let mut result = vec![];
 
     result
