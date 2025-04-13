@@ -1,9 +1,9 @@
 use anyhow::Result;
 use brim::ast::expr::{Expr, ExprKind};
-use brim::ast::item::{FnDecl, FnReturnType, ImportsKind, Item, ItemKind, Use};
+use brim::ast::item::{Block, FnDecl, FnReturnType, ImportsKind, Item, ItemKind, Use};
 use brim::ast::stmts::{Stmt, StmtKind};
 use brim::ast::token::LitKind;
-use brim::ast::ty::{Ty, TyKind};
+use brim::ast::ty::{Mutable, Ty, TyKind};
 use brim::files::{get_file, Files, SimpleFile};
 use brim::span::Span;
 use brim::transformer::HirModule;
@@ -153,6 +153,17 @@ impl AstWalker for SemanticAnalyzer {
         }
     }
 
+    fn visit_block(&mut self, block: &mut Block) {
+        if let Some(braces) = block.braces {
+            self.add_span(SemanticTokenType::OPERATOR, braces.0);
+            self.add_span(SemanticTokenType::OPERATOR, braces.1);
+        }
+
+        for stmt in &mut block.stmts {
+            self.walk_stmt(stmt);
+        }
+    }
+
     fn visit_fn(&mut self, func: &mut FnDecl) {
         self.add_span(SemanticTokenType::KEYWORD, func.sig.keyword);
         if let Some(cnst) = func.sig.constant {
@@ -175,14 +186,16 @@ impl AstWalker for SemanticAnalyzer {
         if let FnReturnType::Ty(ty) = &mut func.sig.return_type {
             self.visit_ty(ty);
         }
+
+        if let Some(body) = &mut func.body {
+            self.visit_block(body);
+        }
     }
 
     fn visit_ty(&mut self, ty: &mut Ty) {
-        match ty.kind {
+        match &mut ty.kind {
             TyKind::Ident {
-                ident,
-                ref mut generics,
-                ..
+                ident, generics, ..
             } => {
                 self.add_span(SemanticTokenType::TYPE, ident.span);
                 if let Some((obrace, cbrace)) = generics.braces {
@@ -193,6 +206,26 @@ impl AstWalker for SemanticAnalyzer {
                 for arg in &mut generics.params {
                     self.visit_ty(&mut arg.ty);
                 }
+            }
+            TyKind::Primitive(prim) => {
+                self.add_span(SemanticTokenType::TYPE, ty.span);
+            }
+            TyKind::Ref(span, ty, mutable) | TyKind::Ptr(span, ty, mutable) => {
+                self.add_span(SemanticTokenType::OPERATOR, span.clone());
+
+                if let Mutable::Yes(span) = mutable {
+                    self.add_span(SemanticTokenType::KEYWORD, *span);
+                }
+
+                self.visit_ty(ty);
+            }
+            TyKind::Const(span, ty) => {
+                self.add_span(SemanticTokenType::KEYWORD, *span);
+                self.visit_ty(ty);
+            }
+            TyKind::Mut(ty, span) => {
+                self.add_span(SemanticTokenType::KEYWORD, *span);
+                self.visit_ty(ty);
             }
             _ => warn!("not implemented for ty {:?}", ty),
         }
@@ -216,8 +249,8 @@ impl AstWalker for SemanticAnalyzer {
 
                 self.add_span(kind, *span);
             }
-            ExprKind::Return(expr) => {
-                self.add_span(SemanticTokenType::KEYWORD, expr.span);
+            ExprKind::Return(expr, span) => {
+                self.add_span(SemanticTokenType::KEYWORD, span.clone());
 
                 self.walk_expr(expr);
             }
