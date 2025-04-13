@@ -1,4 +1,4 @@
-import path from 'path';
+import path from "path";
 import {
   CancellationToken,
   commands,
@@ -17,7 +17,7 @@ import {
   window,
   workspace,
   WorkspaceEdit,
-} from 'vscode';
+} from "vscode";
 
 import {
   Disposable,
@@ -25,23 +25,24 @@ import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
-} from 'vscode-languageclient/node';
+} from "vscode-languageclient/node";
 
 let client: LanguageClient;
-const outputChannel = window.createOutputChannel('Brim Extension');
+const outputChannel = window.createOutputChannel("Brim Extension");
 
 export async function activate(context: ExtensionContext) {
-  outputChannel.appendLine('Activating Brim Language Server extension...');
+  outputChannel.appendLine("Activating Brim Language Server extension...");
 
   // I know this is bad, but only for development
-  const command = 'C:\\dev\\brim-projects\\ide\\server\\target\\debug\\brim-language-server.exe';
+  const command =
+    "C:\\dev\\brim-projects\\ide\\target\\debug\\brim-language-server.exe";
 
   const run: Executable = {
     command,
     options: {
       env: {
         ...process.env,
-        RUST_LOG: 'debug',
+        RUST_LOG: "debug",
       },
     },
   };
@@ -51,26 +52,26 @@ export async function activate(context: ExtensionContext) {
     debug: run,
   };
   let clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: 'file', language: 'brim' }],
+    documentSelector: [{ scheme: "file", language: "brim" }],
     synchronize: {
-      fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
+      fileEvents: workspace.createFileSystemWatcher("**/.clientrc"),
     },
     outputChannel: outputChannel,
   };
 
   client = new LanguageClient(
-    'brim-language-server',
-    'brim language server',
+    "brim-language-server",
+    "brim language server",
     serverOptions,
     clientOptions,
   );
 
   await client.start();
-  outputChannel.appendLine('Brim Language Server started.');
+  outputChannel.appendLine("Brim Language Server started.");
 }
 
 export function deactivate(): Thenable<void> | undefined {
-  outputChannel.appendLine('Deactivating Brim Language Server extension...');
+  outputChannel.appendLine("Deactivating Brim Language Server extension...");
   if (!client) {
     return undefined;
   }

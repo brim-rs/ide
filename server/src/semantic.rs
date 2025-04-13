@@ -1,14 +1,16 @@
 use anyhow::Result;
 use brim::ast::expr::{Expr, ExprKind};
-use brim::ast::item::{ImportsKind, Item, ItemKind, Use};
+use brim::ast::item::{FnDecl, FnReturnType, ImportsKind, Item, ItemKind, Use};
+use brim::ast::stmts::{Stmt, StmtKind};
 use brim::ast::token::LitKind;
+use brim::ast::ty::Ty;
 use brim::files::{get_file, Files, SimpleFile};
 use brim::span::Span;
 use brim::transformer::HirModule;
 use brim::walker::AstWalker;
 use std::time::Instant;
 use tower_lsp::lsp_types::{Position, SemanticTokenType};
-use tracing::info;
+use tracing::{info, warn};
 
 pub const LEGEND_TYPE: &[SemanticTokenType] = &[
     SemanticTokenType::FUNCTION,
@@ -35,6 +37,7 @@ pub struct CustomSemanticToken {
 
 pub fn semantic_tokens(module: &mut HirModule) -> Result<Vec<CustomSemanticToken>> {
     let start = Instant::now();
+    info!("Starting semantic analyze");
     let file = get_file(module.mod_id.as_usize())?;
     let mut analyzer = SemanticAnalyzer::new(file.clone());
 
@@ -119,7 +122,6 @@ impl SemanticAnalyzer {
 
 impl AstWalker for SemanticAnalyzer {
     fn walk_item(&mut self, item: &mut Item) {
-        info!("walking item {}", item.ident);
         for attr in &mut item.attrs {
             self.add_span(SemanticTokenType::OPERATOR, attr.at_span);
             self.add_span(SemanticTokenType::DECORATOR, attr.name.span);
@@ -151,20 +153,75 @@ impl AstWalker for SemanticAnalyzer {
         }
     }
 
+    fn visit_fn(&mut self, func: &mut FnDecl) {
+        self.add_span(SemanticTokenType::KEYWORD, func.sig.keyword);
+        if let Some(cnst) = func.sig.constant {
+            self.add_span(SemanticTokenType::KEYWORD, cnst);
+        }
+        self.add_span(SemanticTokenType::FUNCTION, func.sig.name.span);
+
+        if let Some((o, c)) = func.sig.parens {
+            self.add_span(SemanticTokenType::OPERATOR, o);
+            self.add_span(SemanticTokenType::OPERATOR, c);
+        }
+        for param in &mut func.sig.params {
+            self.add_span(SemanticTokenType::PARAMETER, param.name.span);
+            self.add_span(SemanticTokenType::OPERATOR, param.colon);
+            self.visit_ty(&mut param.ty);
+            if let Some(comma) = param.comma {
+                self.add_span(SemanticTokenType::OPERATOR, comma);
+            }
+        }
+        if let FnReturnType::Ty(ty) = &mut func.sig.return_type {
+            self.visit_ty(ty);
+        }
+    }
+
+    fn visit_ty(&mut self, ty: &mut Ty) {}
+
     fn visit_expr(&mut self, expr: &mut Expr) {
-        if let ExprKind::Literal(lit, span) = &expr.kind {
-            let kind = match lit.kind {
-                LitKind::Str | LitKind::ByteStr | LitKind::Char | LitKind::Byte | LitKind::CStr => {
-                    SemanticTokenType::STRING
+        match &mut expr.kind {
+            ExprKind::Literal(lit, span) => {
+                let kind = match lit.kind {
+                    LitKind::Str
+                    | LitKind::ByteStr
+                    | LitKind::Char
+                    | LitKind::Byte
+                    | LitKind::CStr => SemanticTokenType::STRING,
+                    LitKind::Integer | LitKind::Float => SemanticTokenType::NUMBER,
+                    LitKind::Bool => SemanticTokenType::KEYWORD,
+
+                    // only supposed to be found after comptime evaluation
+                    LitKind::None | LitKind::Err(_) => unreachable!(),
+                };
+
+                self.add_span(kind, *span);
+            }
+            ExprKind::Return(expr) => {
+                self.add_span(SemanticTokenType::KEYWORD, expr.span);
+
+                self.walk_expr(expr);
+            }
+            ExprKind::Block(block) => {
+                if let Some((o, c)) = block.braces {
+                    self.add_span(SemanticTokenType::OPERATOR, o);
+                    self.add_span(SemanticTokenType::OPERATOR, c);
                 }
-                LitKind::Integer | LitKind::Float => SemanticTokenType::NUMBER,
-                LitKind::Bool => SemanticTokenType::KEYWORD,
 
-                // only supposed to be found after comptime evaluation
-                LitKind::None | LitKind::Err(_) => unreachable!(),
-            };
+                for stmt in &mut block.stmts {
+                    self.walk_stmt(stmt);
+                }
+            }
+            _ => warn!("not implemented for expr {:?}", expr),
+        }
+    }
 
-            self.add_span(kind, *span);
+    fn walk_stmt(&mut self, stmt: &mut Stmt) {
+        match &mut stmt.kind {
+            StmtKind::Let(let_stmt) => self.visit_let(let_stmt),
+            StmtKind::Expr(expr) => self.visit_expr(expr),
+            StmtKind::If(stmt) => self.visit_if(stmt),
+            StmtKind::Match(mt) => self.visit_match(mt),
         }
     }
 
@@ -176,8 +233,11 @@ impl AstWalker for SemanticAnalyzer {
             }
             ImportsKind::List(idents, commas, (obrace, cbrace)) => {
                 self.add_span(SemanticTokenType::OPERATOR, *obrace);
-                for (ident, comma) in idents.iter().zip(commas.iter()) {
+                for ident in idents {
+                    info!("========{}=======", ident.to_string());
                     self.add_span(SemanticTokenType::VARIABLE, ident.span);
+                }
+                for comma in commas {
                     self.add_span(SemanticTokenType::OPERATOR, *comma);
                 }
                 self.add_span(SemanticTokenType::OPERATOR, *cbrace);
