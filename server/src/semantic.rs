@@ -118,6 +118,11 @@ impl SemanticAnalyzer {
 
         result
     }
+
+    pub fn add_any_double(&mut self, double: (Span, Span)) {
+        self.add_span(SemanticTokenType::OPERATOR, double.0);
+        self.add_span(SemanticTokenType::OPERATOR, double.1);
+    }
 }
 
 impl AstWalker for SemanticAnalyzer {
@@ -140,6 +145,16 @@ impl AstWalker for SemanticAnalyzer {
             ItemKind::Struct(str) => self.visit_struct(str),
             ItemKind::TypeAlias(type_alias) => self.visit_type_alias(type_alias),
             ItemKind::External(external) => {
+                self.add_span(SemanticTokenType::KEYWORD, external.keyword.clone());
+
+                if let Some((_, span)) = &external.abi {
+                    self.add_span(SemanticTokenType::STRING, span.clone());
+                }
+
+                if let Some(double) = &external.braces {
+                    self.add_any_double(double.clone());
+                }
+
                 for item in &mut external.items {
                     match &mut item.kind {
                         ItemKind::Fn(func) => self.visit_fn(func),
@@ -155,8 +170,7 @@ impl AstWalker for SemanticAnalyzer {
 
     fn visit_block(&mut self, block: &mut Block) {
         if let Some(braces) = block.braces {
-            self.add_span(SemanticTokenType::OPERATOR, braces.0);
-            self.add_span(SemanticTokenType::OPERATOR, braces.1);
+            self.add_any_double(braces);
         }
 
         for stmt in &mut block.stmts {
@@ -199,8 +213,7 @@ impl AstWalker for SemanticAnalyzer {
             } => {
                 self.add_span(SemanticTokenType::TYPE, ident.span);
                 if let Some((obrace, cbrace)) = generics.braces {
-                    self.add_span(SemanticTokenType::OPERATOR, obrace);
-                    self.add_span(SemanticTokenType::OPERATOR, cbrace);
+                    self.add_any_double((obrace, cbrace));
                 }
 
                 for arg in &mut generics.params {
@@ -256,8 +269,7 @@ impl AstWalker for SemanticAnalyzer {
             }
             ExprKind::Block(block) => {
                 if let Some((o, c)) = block.braces {
-                    self.add_span(SemanticTokenType::OPERATOR, o);
-                    self.add_span(SemanticTokenType::OPERATOR, c);
+                    self.add_any_double((o, c));
                 }
 
                 for stmt in &mut block.stmts {
@@ -286,7 +298,6 @@ impl AstWalker for SemanticAnalyzer {
             ImportsKind::List(idents, commas, (obrace, cbrace)) => {
                 self.add_span(SemanticTokenType::OPERATOR, *obrace);
                 for ident in idents {
-                    info!("========{}=======", ident.to_string());
                     self.add_span(SemanticTokenType::VARIABLE, ident.span);
                 }
                 for comma in commas {
