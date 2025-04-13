@@ -7,4 +7,4 @@ _default:
     @just --list -u
 
 build:
-    cd vscode; pnpm.cmd build; cd ../server; cargo build --release
+    cd vscode; pnpm.cmd build; cd ../server; cargo build

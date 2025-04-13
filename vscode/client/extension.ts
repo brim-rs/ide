@@ -35,7 +35,7 @@ export async function activate(context: ExtensionContext) {
 
 	// I know this is bad, but only for development
 	const command =
-		"C:\\dev\\brim-projects\\ide\\server\\target\\release\\brim-language-server.exe";
+		"C:\\dev\\brim-projects\\ide\\server\\target\\debug\\brim-language-server.exe";
 
 	const run: Executable = {
 		command,

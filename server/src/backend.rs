@@ -1,5 +1,5 @@
 use crate::on_change::url_to_path;
-use crate::semantic::{semantic_tokens, LEGEND_TYPE};
+use crate::semantic::{semantic_tokens, CustomSemanticToken, LEGEND_TYPE};
 use dashmap::DashMap;
 use ropey::Rope;
 use serde_json::Value;
@@ -165,33 +165,45 @@ impl LanguageServer for Backend {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let path = url_to_path(&params.text_document.uri.to_string());
-        let compiled = self.get_compiled().await;
-        let module = compiled.find_module_by_path(path);
 
-        let data = if let Some(module) = module {
-            info!("Found module for tokens_full: {:?}", module.path);
-            semantic_tokens(module)
-        } else {
-            vec![]
-        };
-
+        let data = self.to_plain_semantics(self.get_tokens(path).await);
         info!("Returning semantic tokens full");
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
-            data,
+            data
         })))
     }
-
 
     async fn semantic_tokens_range(
         &self,
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
+        let path = url_to_path(&params.text_document.uri.to_string());
+        let start = params.range.start;
+        let end = params.range.end;
+        let data = self.get_tokens(path).await;
+
+        let filtered_tokens = data.iter()
+            .filter(|token| {
+                let token_pos = token.pos;
+
+                let after_start = token_pos.line > start.line ||
+                    (token_pos.line == start.line && token_pos.character >= start.character);
+
+                let before_end = token_pos.line < end.line ||
+                    (token_pos.line == end.line && token_pos.character < end.character);
+
+                after_start && before_end
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let plain_tokens = self.to_plain_semantics(filtered_tokens);
 
         info!("Returning semantic tokens range");
         Ok(Some(SemanticTokensRangeResult::Tokens(SemanticTokens {
             result_id: None,
-            data: vec![],
+            data: plain_tokens,
         })))
     }
 }
@@ -199,5 +211,38 @@ impl LanguageServer for Backend {
 impl Backend {
     async fn get_compiled(&self) -> tokio::sync::MutexGuard<'_, CompiledModules> {
         self.compiled.lock().await
+    }
+
+    async fn get_tokens(&self, path: PathBuf) -> Vec<CustomSemanticToken> {
+        let compiled = self.get_compiled().await;
+        let module = compiled.find_module_by_path(path);
+
+        if let Some(ref mut module) = module.cloned() {
+            info!("Found module for tokens_full: {:?}", module.path);
+            let res = semantic_tokens(module);
+            if let Err(err) = res {
+                let msg = format!("Failed to run semantic analyze: {err}");
+                self.client
+                    .show_message(MessageType::ERROR, msg.clone())
+                    .await;
+                error!("{msg}");
+
+                vec![]
+            } else {
+                res.unwrap()
+            }
+        } else {
+            vec![]
+        }
+    }
+
+    fn to_plain_semantics(&self, tokens: Vec<CustomSemanticToken>) -> Vec<SemanticToken> {
+        tokens.iter().map(|token| SemanticToken {
+            delta_line: token.delta_line,
+            delta_start: token.delta_start,
+            length: token.length,
+            token_type: token.token_type,
+            token_modifiers_bitset: 0,
+        }).collect()
     }
 }
