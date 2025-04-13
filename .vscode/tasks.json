@@ -59,6 +59,12 @@
         "npm: watch-tests"
       ],
       "problemMatcher": []
+    },
+    {
+      "label": "just build",
+      "type": "shell",
+      "command": "just build",
+      "problemMatcher": []
     }
   ]
 }

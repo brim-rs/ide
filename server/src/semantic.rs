@@ -3,7 +3,7 @@ use brim::ast::expr::{Expr, ExprKind};
 use brim::ast::item::{FnDecl, FnReturnType, ImportsKind, Item, ItemKind, Use};
 use brim::ast::stmts::{Stmt, StmtKind};
 use brim::ast::token::LitKind;
-use brim::ast::ty::Ty;
+use brim::ast::ty::{Ty, TyKind};
 use brim::files::{get_file, Files, SimpleFile};
 use brim::span::Span;
 use brim::transformer::HirModule;
@@ -177,7 +177,26 @@ impl AstWalker for SemanticAnalyzer {
         }
     }
 
-    fn visit_ty(&mut self, ty: &mut Ty) {}
+    fn visit_ty(&mut self, ty: &mut Ty) {
+        match ty.kind {
+            TyKind::Ident {
+                ident,
+                ref mut generics,
+                ..
+            } => {
+                self.add_span(SemanticTokenType::TYPE, ident.span);
+                if let Some((obrace, cbrace)) = generics.braces {
+                    self.add_span(SemanticTokenType::OPERATOR, obrace);
+                    self.add_span(SemanticTokenType::OPERATOR, cbrace);
+                }
+
+                for arg in &mut generics.params {
+                    self.visit_ty(&mut arg.ty);
+                }
+            }
+            _ => warn!("not implemented for ty {:?}", ty),
+        }
+    }
 
     fn visit_expr(&mut self, expr: &mut Expr) {
         match &mut expr.kind {
