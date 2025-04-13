@@ -10,14 +10,15 @@ build:
     cd vscode; pnpm.cmd build; cd ../server; cargo build
 
 ready:
-    cd server
     just fmt
     just check
     just lint
     git status
 
 fix:
-    cd server; cargo clippy --fix --allow-staged --no-deps; just fmt; git status
+    cargo clippy --fix --allow-staged --no-deps
+    just fmt
+    git status
 
 check:
     cargo check --workspace --all-features --all-targets --locked

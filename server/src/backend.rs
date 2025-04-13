@@ -1,22 +1,22 @@
 use crate::on_change::url_to_path;
 use crate::semantic::{semantic_tokens, CustomSemanticToken, LEGEND_TYPE};
+use brim::transformer::HirModule;
+use brim::CompiledModules;
 use dashmap::DashMap;
 use ropey::Rope;
 use serde_json::Value;
 use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
-use brim::CompiledModules;
-use brim::transformer::HirModule;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::{error, info};
-use tracing_subscriber::{fmt, EnvFilter};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Debug)]
 pub struct Backend {
@@ -127,11 +127,9 @@ impl LanguageServer for Backend {
         // )
         // .await;
     }
-    async fn did_save(&self, _: DidSaveTextDocumentParams) {
-    }
+    async fn did_save(&self, _: DidSaveTextDocumentParams) {}
 
-    async fn did_close(&self, _: DidCloseTextDocumentParams) {
-    }
+    async fn did_close(&self, _: DidCloseTextDocumentParams) {}
 
     async fn completion(&self, _: CompletionParams) -> Result<Option<CompletionResponse>> {
         Ok(Some(CompletionResponse::Array(vec![
@@ -140,15 +138,11 @@ impl LanguageServer for Backend {
         ])))
     }
 
-    async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {
+    async fn did_change_configuration(&self, _: DidChangeConfigurationParams) {}
 
-    }
+    async fn did_change_workspace_folders(&self, _: DidChangeWorkspaceFoldersParams) {}
 
-    async fn did_change_workspace_folders(&self, _: DidChangeWorkspaceFoldersParams) {
-    }
-
-    async fn did_change_watched_files(&self, _: DidChangeWatchedFilesParams) {
-    }
+    async fn did_change_watched_files(&self, _: DidChangeWatchedFilesParams) {}
 
     async fn execute_command(&self, _: ExecuteCommandParams) -> Result<Option<Value>> {
         match self.client.apply_edit(WorkspaceEdit::default()).await {
@@ -170,7 +164,7 @@ impl LanguageServer for Backend {
         info!("Returning semantic tokens full");
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
-            data
+            data,
         })))
     }
 
@@ -183,15 +177,16 @@ impl LanguageServer for Backend {
         let end = params.range.end;
         let data = self.get_tokens(path).await;
 
-        let filtered_tokens = data.iter()
+        let filtered_tokens = data
+            .iter()
             .filter(|token| {
                 let token_pos = token.pos;
 
-                let after_start = token_pos.line > start.line ||
-                    (token_pos.line == start.line && token_pos.character >= start.character);
+                let after_start = token_pos.line > start.line
+                    || (token_pos.line == start.line && token_pos.character >= start.character);
 
-                let before_end = token_pos.line < end.line ||
-                    (token_pos.line == end.line && token_pos.character < end.character);
+                let before_end = token_pos.line < end.line
+                    || (token_pos.line == end.line && token_pos.character < end.character);
 
                 after_start && before_end
             })
@@ -237,12 +232,15 @@ impl Backend {
     }
 
     fn to_plain_semantics(&self, tokens: Vec<CustomSemanticToken>) -> Vec<SemanticToken> {
-        tokens.iter().map(|token| SemanticToken {
-            delta_line: token.delta_line,
-            delta_start: token.delta_start,
-            length: token.length,
-            token_type: token.token_type,
-            token_modifiers_bitset: 0,
-        }).collect()
+        tokens
+            .iter()
+            .map(|token| SemanticToken {
+                delta_line: token.delta_line,
+                delta_start: token.delta_start,
+                length: token.length,
+                token_type: token.token_type,
+                token_modifiers_bitset: 0,
+            })
+            .collect()
     }
 }

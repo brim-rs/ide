@@ -1,4 +1,5 @@
 use anyhow::Result;
+use brim::ast::expr::{Expr, ExprKind};
 use brim::ast::item::{ImportsKind, Item, ItemKind, Use};
 use brim::ast::token::{LitKind, TokenKind};
 use brim::files::{get_file, Files, SimpleFile};
@@ -7,7 +8,6 @@ use brim::transformer::HirModule;
 use brim::walker::AstWalker;
 use ropey::Rope;
 use std::time::Instant;
-use brim::ast::expr::{Expr, ExprKind};
 use tower_lsp::lsp_types::{Position, SemanticToken, SemanticTokenType};
 use tracing::info;
 
@@ -44,7 +44,11 @@ pub fn semantic_tokens(module: &mut HirModule) -> Result<Vec<CustomSemanticToken
     }
 
     let tokens = analyzer.build_semantic_tokens();
-    info!("Finished semantic analyze with {} tokens in {:.2?}", tokens.len(), start.elapsed());
+    info!(
+        "Finished semantic analyze with {} tokens in {:.2?}",
+        tokens.len(),
+        start.elapsed()
+    );
 
     Ok(tokens)
 }
@@ -152,7 +156,11 @@ impl AstWalker for SemanticAnalyzer {
         match &expr.kind {
             ExprKind::Literal(lit, span) => {
                 let kind = match lit.kind {
-                    LitKind::Str | LitKind::ByteStr | LitKind::Char | LitKind::Byte | LitKind::CStr => SemanticTokenType::STRING,
+                    LitKind::Str
+                    | LitKind::ByteStr
+                    | LitKind::Char
+                    | LitKind::Byte
+                    | LitKind::CStr => SemanticTokenType::STRING,
                     LitKind::Integer | LitKind::Float => SemanticTokenType::NUMBER,
                     LitKind::Bool => SemanticTokenType::KEYWORD,
 

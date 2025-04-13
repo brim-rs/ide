@@ -1,15 +1,14 @@
-use std::sync::Arc;
+use crate::backend::Backend;
 use brim::CompiledModules;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_lsp::{LspService, Server};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
-use crate::backend::Backend;
 
+mod backend;
 mod on_change;
 mod semantic;
-mod backend;
-
 
 #[tokio::main]
 async fn main() {

@@ -1,8 +1,5 @@
-use std::collections::HashSet;
-use std::env::current_dir;
-use std::path::PathBuf;
-use std::time::Instant;
-use brim::{CompiledModule, CompiledModules, ModuleId, SimpleModules};
+use crate::Backend;
+use anyhow::Result;
 use brim::args::RunArgs;
 use brim::compiler::CompilerContext;
 use brim::config::toml::Config;
@@ -17,18 +14,19 @@ use brim::resolver::ImportResolver;
 use brim::session::Session;
 use brim::temp_diag::TemporaryDiagnosticContext;
 use brim::transformer::HirModuleMap;
-use crate::Backend;
+use brim::{CompiledModule, CompiledModules, ModuleId, SimpleModules};
 use percent_encoding::percent_decode;
 use ropey::Rope;
+use std::collections::HashSet;
+use std::env::current_dir;
+use std::path::PathBuf;
+use std::time::Instant;
 use tower_lsp::lsp_types::{DiagnosticSeverity, MessageType, Position, Range, TextDocumentItem};
 use tracing::info;
-use anyhow::Result;
 
 impl Backend {
     pub async fn on_change(&self, doc: TextDocumentItem, path: PathBuf) {
         info!("Performing on_change for {:?}", path);
-
-
     }
 
     pub async fn initial_scan(&self) -> anyhow::Result<()> {
@@ -74,7 +72,9 @@ impl Backend {
                 },
             );
 
-            compiled_projects.expanded_by_builtins.extend(hir.expanded_by_builtins);
+            compiled_projects
+                .expanded_by_builtins
+                .extend(hir.expanded_by_builtins);
             compiled_projects.builtin_args.extend(hir.builtin_args);
         }
 
@@ -95,7 +95,6 @@ impl Backend {
 
         Ok(())
     }
-
 }
 
 pub fn compile_project(
@@ -115,7 +114,9 @@ pub fn compile_project(
 
     let mut discover = ModuleDiscover::new(resolver_temp, sess);
 
-    discover.map.insert_or_update(get_path(entry_file).unwrap(), barrel.clone());
+    discover
+        .map
+        .insert_or_update(get_path(entry_file).unwrap(), barrel.clone());
     let mut visited = HashSet::new();
 
     let module_map = discover.create_module_map(&barrel, &mut visited).unwrap();
@@ -141,7 +142,9 @@ pub fn compile_project(
         if let Some(func) = main_fn {
             comp.validate_main_function(func, entry_file);
         } else {
-            comp.emit(NoMainFunction { file: main_mod.path.display().to_string() });
+            comp.emit(NoMainFunction {
+                file: main_mod.path.display().to_string(),
+            });
         }
     }
 
