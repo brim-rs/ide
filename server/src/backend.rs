@@ -1,22 +1,14 @@
 use crate::on_change::url_to_path;
 use crate::semantic::{semantic_tokens, CustomSemanticToken, LEGEND_TYPE};
-use brim::transformer::HirModule;
 use brim::CompiledModules;
-use dashmap::DashMap;
-use ropey::Rope;
 use serde_json::Value;
-use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer, LspService, Server};
+use tower_lsp::{Client, LanguageServer};
 use tracing::{error, info};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Debug)]
 pub struct Backend {
@@ -113,7 +105,7 @@ impl LanguageServer for Backend {
         // .await;
     }
 
-    async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
         // let path: PathBuf = url_to_path(&params.text_document.uri.to_string()).into();
         //
         // self.on_change(
@@ -158,7 +150,7 @@ impl LanguageServer for Backend {
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
-        let path = url_to_path(&params.text_document.uri.to_string());
+        let path = url_to_path(params.text_document.uri.as_ref());
 
         let data = self.to_plain_semantics(self.get_tokens(path).await);
         info!("Returning semantic tokens full");
@@ -172,7 +164,7 @@ impl LanguageServer for Backend {
         &self,
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
-        let path = url_to_path(&params.text_document.uri.to_string());
+        let path = url_to_path(params.text_document.uri.as_ref());
         let start = params.range.start;
         let end = params.range.end;
         let data = self.get_tokens(path).await;

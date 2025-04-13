@@ -16,12 +16,9 @@ use brim::temp_diag::TemporaryDiagnosticContext;
 use brim::transformer::HirModuleMap;
 use brim::{CompiledModule, CompiledModules, ModuleId, SimpleModules};
 use percent_encoding::percent_decode;
-use ropey::Rope;
 use std::collections::HashSet;
-use std::env::current_dir;
 use std::path::PathBuf;
-use std::time::Instant;
-use tower_lsp::lsp_types::{DiagnosticSeverity, MessageType, Position, Range, TextDocumentItem};
+use tower_lsp::lsp_types::{MessageType, TextDocumentItem};
 use tracing::info;
 
 impl Backend {

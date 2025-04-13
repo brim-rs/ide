@@ -1,14 +1,13 @@
 use anyhow::Result;
 use brim::ast::expr::{Expr, ExprKind};
 use brim::ast::item::{ImportsKind, Item, ItemKind, Use};
-use brim::ast::token::{LitKind, TokenKind};
+use brim::ast::token::LitKind;
 use brim::files::{get_file, Files, SimpleFile};
 use brim::span::Span;
 use brim::transformer::HirModule;
 use brim::walker::AstWalker;
-use ropey::Rope;
 use std::time::Instant;
-use tower_lsp::lsp_types::{Position, SemanticToken, SemanticTokenType};
+use tower_lsp::lsp_types::{Position, SemanticTokenType};
 use tracing::info;
 
 pub const LEGEND_TYPE: &[SemanticTokenType] = &[
@@ -153,24 +152,19 @@ impl AstWalker for SemanticAnalyzer {
     }
 
     fn visit_expr(&mut self, expr: &mut Expr) {
-        match &expr.kind {
-            ExprKind::Literal(lit, span) => {
-                let kind = match lit.kind {
-                    LitKind::Str
-                    | LitKind::ByteStr
-                    | LitKind::Char
-                    | LitKind::Byte
-                    | LitKind::CStr => SemanticTokenType::STRING,
-                    LitKind::Integer | LitKind::Float => SemanticTokenType::NUMBER,
-                    LitKind::Bool => SemanticTokenType::KEYWORD,
+        if let ExprKind::Literal(lit, span) = &expr.kind {
+            let kind = match lit.kind {
+                LitKind::Str | LitKind::ByteStr | LitKind::Char | LitKind::Byte | LitKind::CStr => {
+                    SemanticTokenType::STRING
+                }
+                LitKind::Integer | LitKind::Float => SemanticTokenType::NUMBER,
+                LitKind::Bool => SemanticTokenType::KEYWORD,
 
-                    // only supposed to be found after comptime evaluation
-                    LitKind::None | LitKind::Err(_) => unreachable!(),
-                };
+                // only supposed to be found after comptime evaluation
+                LitKind::None | LitKind::Err(_) => unreachable!(),
+            };
 
-                self.add_span(kind, *span);
-            }
-            _ => {}
+            self.add_span(kind, *span);
         }
     }
 
