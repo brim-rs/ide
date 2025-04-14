@@ -1,6 +1,8 @@
 use anyhow::Result;
 use brim::ast::expr::{Expr, ExprKind};
-use brim::ast::item::{Block, FnDecl, FnReturnType, ImportsKind, Item, ItemKind, Use};
+use brim::ast::item::{
+    Block, FnDecl, FnReturnType, GenericKind, Generics, ImportsKind, Item, ItemKind, Struct, Use,
+};
 use brim::ast::stmts::{Stmt, StmtKind};
 use brim::ast::token::LitKind;
 use brim::ast::ty::{Mutable, Ty, TyKind};
@@ -166,6 +168,35 @@ impl AstWalker for SemanticAnalyzer {
             ItemKind::Enum(_) => {}
             ItemKind::Namespace(_) | ItemKind::Module(_) => {}
         }
+
+        for semi in &item.semis {
+            self.add_span(SemanticTokenType::OPERATOR, *semi);
+        }
+    }
+
+    fn visit_struct(&mut self, str: &mut Struct) {
+        self.add_span(SemanticTokenType::KEYWORD, str.keyword);
+        self.add_span(SemanticTokenType::STRUCT, str.ident.span);
+
+        self.visit_generics(&mut str.generics);
+
+        if let Some((o, c)) = str.braces {
+            self.add_any_double((o, c));
+        }
+
+        for field in &mut str.fields {
+            self.add_span(SemanticTokenType::PROPERTY, field.ident.span);
+            self.add_span(SemanticTokenType::OPERATOR, field.colon);
+            self.visit_ty(&mut field.ty);
+        }
+
+        for commas in &str.field_commas {
+            self.add_span(SemanticTokenType::OPERATOR, *commas);
+        }
+
+        for item in &mut str.items {
+            self.walk_item(item);
+        }
     }
 
     fn visit_block(&mut self, block: &mut Block) {
@@ -178,12 +209,50 @@ impl AstWalker for SemanticAnalyzer {
         }
     }
 
+    fn visit_generics(&mut self, generics: &mut Generics) {
+        if let Some((o, c)) = generics.chevrons {
+            self.add_any_double((o, c));
+        }
+
+        for comma in &generics.commas {
+            self.add_span(SemanticTokenType::OPERATOR, *comma);
+        }
+
+        for param in &mut generics.params {
+            self.add_span(SemanticTokenType::TYPE, param.ident.span);
+
+            match &param.kind {
+                GenericKind::Type { default, colon } => {
+                    if let Some(def) = default {
+                        self.visit_ty(&mut def.clone());
+                        self.add_span(SemanticTokenType::OPERATOR, colon.unwrap());
+                    }
+                }
+                GenericKind::NonType {
+                    default,
+                    ty,
+                    eq,
+                    colon,
+                } => {
+                    self.visit_ty(&mut ty.clone());
+                    self.add_span(SemanticTokenType::OPERATOR, *colon);
+                    if let Some(def) = default {
+                        self.visit_expr(&mut def.clone());
+                        self.add_span(SemanticTokenType::OPERATOR, eq.unwrap());
+                    }
+                }
+            }
+        }
+    }
+
     fn visit_fn(&mut self, func: &mut FnDecl) {
         self.add_span(SemanticTokenType::KEYWORD, func.sig.keyword);
         if let Some(cnst) = func.sig.constant {
             self.add_span(SemanticTokenType::KEYWORD, cnst);
         }
         self.add_span(SemanticTokenType::FUNCTION, func.sig.name.span);
+
+        self.visit_generics(&mut func.generics);
 
         if let Some((o, c)) = func.sig.parens {
             self.add_span(SemanticTokenType::OPERATOR, o);
@@ -239,6 +308,15 @@ impl AstWalker for SemanticAnalyzer {
             TyKind::Mut(ty, span) => {
                 self.add_span(SemanticTokenType::KEYWORD, *span);
                 self.visit_ty(ty);
+            }
+            TyKind::Option(ty) => {
+                self.visit_ty(ty);
+                self.add_span(SemanticTokenType::OPERATOR, ty.span.from_end());
+            }
+            TyKind::Result(ok, err) => {
+                self.visit_ty(ok);
+                self.add_span(SemanticTokenType::OPERATOR, ok.span.from_end().move_by(1));
+                self.visit_ty(err);
             }
             _ => warn!("not implemented for ty {:?}", ty),
         }
