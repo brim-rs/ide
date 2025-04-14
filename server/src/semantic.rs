@@ -43,6 +43,10 @@ pub fn semantic_tokens(module: &mut HirModule) -> Result<Vec<CustomSemanticToken
     let file = get_file(module.mod_id.as_usize())?;
     let mut analyzer = SemanticAnalyzer::new(file.clone());
 
+    for comment in &module.barrel.comments {
+        analyzer.add_span(SemanticTokenType::COMMENT, *comment);
+    }
+
     for item in &mut module.barrel.items {
         analyzer.walk_item(item);
     }
@@ -353,6 +357,15 @@ impl AstWalker for SemanticAnalyzer {
                 for stmt in &mut block.stmts {
                     self.walk_stmt(stmt);
                 }
+            }
+            ExprKind::Type(ty) => self.visit_ty(ty),
+            ExprKind::Var(ident) => {
+                self.add_span(SemanticTokenType::VARIABLE, ident.span);
+            }
+            ExprKind::Paren(expr, parens) => {
+                self.add_any_double(parens.clone());
+
+                self.visit_expr(expr);
             }
             _ => warn!("not implemented for expr {:?}", expr),
         }
