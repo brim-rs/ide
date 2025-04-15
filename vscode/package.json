@@ -38,11 +38,11 @@
         "default": "verbose",
         "description": "Traces the communication between VS Code and the language server."
       },
-      "brim.path": {
+      "brim.lspPath": {
         "scope": "resource",
         "type": "string",
         "default": "",
-        "description": "Path to the brim binary. If not set, the extension will use the one in your PATH."
+        "description": "Path to the LSP binary. If not set, the extension will use the one in your PATH."
       }
     }
   },
