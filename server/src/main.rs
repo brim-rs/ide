@@ -10,6 +10,8 @@ mod backend;
 mod on_change;
 mod semantic;
 
+fn test() {}
+
 #[tokio::main]
 async fn main() {
     let stdin = tokio::io::stdin();

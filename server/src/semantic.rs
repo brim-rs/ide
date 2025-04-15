@@ -1,10 +1,11 @@
 use anyhow::Result;
-use brim::ast::expr::{Expr, ExprKind};
+use brim::ast::expr::{BinOpKind, Expr, ExprKind, Match, UnaryOp};
 use brim::ast::item::{
-    Block, FnDecl, FnReturnType, GenericKind, Generics, ImportsKind, Item, ItemKind, Struct, Use,
+    Block, FnDecl, FnReturnType, GenericKind, Generics, ImportsKind, Item, ItemKind, Struct,
+    TypeAlias, TypeAliasValue, Use, VisibilityKind,
 };
-use brim::ast::stmts::{Stmt, StmtKind};
-use brim::ast::token::LitKind;
+use brim::ast::stmts::{IfStmt, Let, Stmt, StmtKind};
+use brim::ast::token::{LitKind, TokenKind};
 use brim::ast::ty::{Mutable, Ty, TyKind};
 use brim::files::{get_file, Files, SimpleFile};
 use brim::span::Span;
@@ -44,7 +45,17 @@ pub fn semantic_tokens(module: &mut HirModule) -> Result<Vec<CustomSemanticToken
     let mut analyzer = SemanticAnalyzer::new(file.clone());
 
     for comment in &module.barrel.comments {
-        analyzer.add_span(SemanticTokenType::COMMENT, *comment);
+        analyzer.add_span(SemanticTokenType::COMMENT, comment.clone());
+    }
+
+    for token in &module.barrel.tokens {
+        let kind = match token.kind {
+            TokenKind::At => SemanticTokenType::METHOD,
+            _ if token.is_operator() | token.is_separator() => SemanticTokenType::OPERATOR,
+            _ if token.is_any_keyword() => SemanticTokenType::KEYWORD,
+            _ => continue,
+        };
+        analyzer.add_span(kind, token.span);
     }
 
     for item in &mut module.barrel.items {
@@ -139,7 +150,7 @@ impl AstWalker for SemanticAnalyzer {
 
             self.add_span(SemanticTokenType::OPERATOR, attr.name.span.move_by(1));
             for expr in &mut attr.args {
-                self.walk_expr(expr);
+                self.visit_expr(expr);
             }
             self.add_span(SemanticTokenType::OPERATOR, attr.name.span.from_end());
         }
@@ -151,14 +162,8 @@ impl AstWalker for SemanticAnalyzer {
             ItemKind::Struct(str) => self.visit_struct(str),
             ItemKind::TypeAlias(type_alias) => self.visit_type_alias(type_alias),
             ItemKind::External(external) => {
-                self.add_span(SemanticTokenType::KEYWORD, external.keyword.clone());
-
                 if let Some((_, span)) = &external.abi {
                     self.add_span(SemanticTokenType::STRING, span.clone());
-                }
-
-                if let Some(double) = &external.braces {
-                    self.add_any_double(double.clone());
                 }
 
                 for item in &mut external.items {
@@ -169,8 +174,23 @@ impl AstWalker for SemanticAnalyzer {
                     }
                 }
             }
-            ItemKind::Enum(_) => {}
-            ItemKind::Namespace(_) | ItemKind::Module(_) => {}
+            ItemKind::Enum(en) => {
+                self.visit_generics(&mut en.generics);
+                self.add_span(SemanticTokenType::ENUM, en.ident.span);
+
+                for variant in &mut en.variants {
+                    self.add_span(SemanticTokenType::ENUM_MEMBER, variant.ident.span);
+                    for field in &mut variant.fields {
+                        self.visit_ty(&mut field.ty);
+                    }
+                }
+            }
+            ItemKind::Module(module) => {
+                for ident in &module.idents {
+                    self.add_span(SemanticTokenType::NAMESPACE, ident.span);
+                }
+            }
+            ItemKind::Namespace(_) => {}
         }
 
         for semi in &item.semis {
@@ -178,24 +198,28 @@ impl AstWalker for SemanticAnalyzer {
         }
     }
 
+    fn visit_type_alias(&mut self, alias: &mut TypeAlias) {
+        self.add_span(SemanticTokenType::TYPE, alias.ident.span);
+
+        match &alias.ty {
+            TypeAliasValue::Ty(ty) => self.visit_ty(&mut ty.clone()),
+            TypeAliasValue::Const(expr) => self.visit_expr(&mut expr.clone()),
+        }
+    }
+
     fn visit_struct(&mut self, str: &mut Struct) {
-        self.add_span(SemanticTokenType::KEYWORD, str.keyword);
         self.add_span(SemanticTokenType::STRUCT, str.ident.span);
 
         self.visit_generics(&mut str.generics);
 
-        if let Some((o, c)) = str.braces {
-            self.add_any_double((o, c));
-        }
-
         for field in &mut str.fields {
+            if field.vis.kind == VisibilityKind::Public {
+                self.add_span(SemanticTokenType::KEYWORD, field.vis.span);
+            }
+
             self.add_span(SemanticTokenType::PROPERTY, field.ident.span);
             self.add_span(SemanticTokenType::OPERATOR, field.colon);
             self.visit_ty(&mut field.ty);
-        }
-
-        for commas in &str.field_commas {
-            self.add_span(SemanticTokenType::OPERATOR, *commas);
         }
 
         for item in &mut str.items {
@@ -204,10 +228,6 @@ impl AstWalker for SemanticAnalyzer {
     }
 
     fn visit_block(&mut self, block: &mut Block) {
-        if let Some(braces) = block.braces {
-            self.add_any_double(braces);
-        }
-
         for stmt in &mut block.stmts {
             self.walk_stmt(stmt);
         }
@@ -216,10 +236,6 @@ impl AstWalker for SemanticAnalyzer {
     fn visit_generics(&mut self, generics: &mut Generics) {
         if let Some((o, c)) = generics.chevrons {
             self.add_any_double((o, c));
-        }
-
-        for comma in &generics.commas {
-            self.add_span(SemanticTokenType::OPERATOR, *comma);
         }
 
         for param in &mut generics.params {
@@ -250,7 +266,6 @@ impl AstWalker for SemanticAnalyzer {
     }
 
     fn visit_fn(&mut self, func: &mut FnDecl) {
-        self.add_span(SemanticTokenType::KEYWORD, func.sig.keyword);
         if let Some(cnst) = func.sig.constant {
             self.add_span(SemanticTokenType::KEYWORD, cnst);
         }
@@ -258,17 +273,10 @@ impl AstWalker for SemanticAnalyzer {
 
         self.visit_generics(&mut func.generics);
 
-        if let Some((o, c)) = func.sig.parens {
-            self.add_span(SemanticTokenType::OPERATOR, o);
-            self.add_span(SemanticTokenType::OPERATOR, c);
-        }
         for param in &mut func.sig.params {
             self.add_span(SemanticTokenType::PARAMETER, param.name.span);
             self.add_span(SemanticTokenType::OPERATOR, param.colon);
             self.visit_ty(&mut param.ty);
-            if let Some(comma) = param.comma {
-                self.add_span(SemanticTokenType::OPERATOR, comma);
-            }
         }
         if let FnReturnType::Ty(ty) = &mut func.sig.return_type {
             self.visit_ty(ty);
@@ -313,14 +321,17 @@ impl AstWalker for SemanticAnalyzer {
                 self.add_span(SemanticTokenType::KEYWORD, *span);
                 self.visit_ty(ty);
             }
-            TyKind::Option(ty) => {
-                self.visit_ty(ty);
-                self.add_span(SemanticTokenType::OPERATOR, ty.span.from_end());
+            TyKind::Option(inner, span) => {
+                self.visit_ty(inner);
+                self.add_span(SemanticTokenType::OPERATOR, *span);
             }
             TyKind::Result(ok, err) => {
                 self.visit_ty(ok);
                 self.add_span(SemanticTokenType::OPERATOR, ok.span.from_end().move_by(1));
                 self.visit_ty(err);
+            }
+            TyKind::Vec(ty) => {
+                self.visit_ty(ty);
             }
             _ => warn!("not implemented for ty {:?}", ty),
         }
@@ -347,13 +358,9 @@ impl AstWalker for SemanticAnalyzer {
             ExprKind::Return(expr, span) => {
                 self.add_span(SemanticTokenType::KEYWORD, span.clone());
 
-                self.walk_expr(expr);
+                self.visit_expr(expr);
             }
             ExprKind::Block(block) => {
-                if let Some((o, c)) = block.braces {
-                    self.add_any_double((o, c));
-                }
-
                 for stmt in &mut block.stmts {
                     self.walk_stmt(stmt);
                 }
@@ -362,11 +369,89 @@ impl AstWalker for SemanticAnalyzer {
             ExprKind::Var(ident) => {
                 self.add_span(SemanticTokenType::VARIABLE, ident.span);
             }
-            ExprKind::Paren(expr, parens) => {
-                self.add_any_double(parens.clone());
+            ExprKind::Paren(expr) => {
+                self.visit_expr(expr);
+            }
+            ExprKind::Unary(span, op, operand) => {
+                match op.clone() {
+                    UnaryOp::Try => self.add_span(SemanticTokenType::KEYWORD, span.clone()),
+                    _ => self.add_span(SemanticTokenType::OPERATOR, span.clone()),
+                }
+                self.visit_expr(operand);
+            }
+            ExprKind::Binary(lhs, op, rhs) => {
+                self.visit_expr(lhs);
+                self.visit_expr(rhs);
+            }
+            ExprKind::Array(args) => {
+                for arg in args {
+                    self.visit_expr(arg);
+                }
+            }
+            ExprKind::Path(idents) | ExprKind::Field(idents) => {
+                for ident in idents {
+                    self.add_span(SemanticTokenType::VARIABLE, ident.span);
+                }
+            }
+            ExprKind::Assign(lhs, rhs) | ExprKind::AssignOp(lhs, _, rhs) => {
+                self.visit_expr(lhs);
+                self.visit_expr(rhs);
+            }
+            ExprKind::Index(expr, index) => {
+                self.visit_expr(expr);
+                self.visit_expr(index);
+            }
+            ExprKind::Call(ident, args) => {
+                self.add_span(SemanticTokenType::METHOD, ident.span);
+
+                for arg in args {
+                    self.visit_expr(arg);
+                }
+            }
+            ExprKind::MethodCall(idents, call) => {
+                for ident in idents {
+                    self.add_span(SemanticTokenType::VARIABLE, ident.span);
+                }
+
+                self.visit_expr(call);
+            }
+            ExprKind::StaticAccess(idents, expr) => {
+                for (i, ident) in idents.iter().enumerate() {
+                    if i == 0 {
+                        self.add_span(SemanticTokenType::STRUCT, ident.span);
+                    } else {
+                        self.add_span(SemanticTokenType::VARIABLE, ident.span);
+                    }
+                }
 
                 self.visit_expr(expr);
             }
+            ExprKind::StructConstructor(ident, generics, fields) => {
+                self.add_span(SemanticTokenType::STRUCT, ident.span);
+                for arg in &mut generics.params {
+                    self.visit_ty(&mut arg.ty);
+                }
+
+                for (ident, expr) in fields {
+                    self.add_span(SemanticTokenType::PROPERTY, ident.span);
+                    self.visit_expr(expr);
+                }
+            }
+            ExprKind::Builtin(ident, call) => {
+                self.add_span(SemanticTokenType::FUNCTION, ident.span);
+                for arg in call {
+                    self.visit_expr(arg);
+                }
+            }
+            ExprKind::Ternary(cond, then, el) => {
+                self.visit_expr(cond);
+                self.visit_expr(then);
+                self.visit_expr(el);
+            }
+            ExprKind::Unwrap(expr) => {
+                self.visit_expr(expr);
+            }
+            ExprKind::Match(mt) => self.visit_match(mt),
             _ => warn!("not implemented for expr {:?}", expr),
         }
     }
@@ -380,19 +465,45 @@ impl AstWalker for SemanticAnalyzer {
         }
     }
 
+    fn visit_if(&mut self, if_stmt: &mut IfStmt) {
+        self.visit_expr(&mut if_stmt.condition);
+        self.visit_expr(&mut if_stmt.then_block);
+
+        for else_if in &mut if_stmt.else_ifs {
+            self.visit_expr(&mut else_if.condition);
+            self.visit_expr(&mut else_if.block);
+        }
+
+        if let Some(else_block) = &mut if_stmt.else_block {
+            self.visit_expr(else_block);
+        }
+    }
+
+    fn visit_let(&mut self, let_stmt: &mut Let) {
+        self.add_span(SemanticTokenType::KEYWORD, let_stmt.keyword);
+        self.add_span(SemanticTokenType::VARIABLE, let_stmt.ident.span);
+
+        if let Some(ty) = &let_stmt.ty {
+            self.add_span(SemanticTokenType::OPERATOR, let_stmt.colon.unwrap());
+            self.visit_ty(&mut ty.clone());
+        }
+
+        if let Some(val) = &let_stmt.value {
+            self.add_span(SemanticTokenType::OPERATOR, let_stmt.eq.unwrap());
+            self.visit_expr(&mut val.clone());
+        }
+    }
+
     fn visit_use(&mut self, use_stmt: &mut Use) {
         self.add_span(SemanticTokenType::KEYWORD, use_stmt.use_span);
         match &use_stmt.imports {
             ImportsKind::Default(ident) => {
                 self.add_span(SemanticTokenType::VARIABLE, ident.span);
             }
-            ImportsKind::List(idents, commas, (obrace, cbrace)) => {
+            ImportsKind::List(idents, (obrace, cbrace)) => {
                 self.add_span(SemanticTokenType::OPERATOR, *obrace);
                 for ident in idents {
                     self.add_span(SemanticTokenType::VARIABLE, ident.span);
-                }
-                for comma in commas {
-                    self.add_span(SemanticTokenType::OPERATOR, *comma);
                 }
                 self.add_span(SemanticTokenType::OPERATOR, *cbrace);
             }
