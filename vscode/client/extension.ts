@@ -26,12 +26,14 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
+import { activate as lspActivate } from "./lsp";
 
-let client: LanguageClient;
-const outputChannel = window.createOutputChannel("Brim Extension");
+export const outputChannel = window.createOutputChannel("Brim Extension");
 
 export async function activate(context: ExtensionContext) {
   outputChannel.appendLine("Activating Brim Language Server extension...");
+
+  lspActivate();
 
   // I know this is bad, but only for development
   const command =

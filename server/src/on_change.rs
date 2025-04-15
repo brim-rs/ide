@@ -26,7 +26,7 @@ impl Backend {
         info!("Performing on_change for {:?}", path);
     }
 
-    pub async fn initial_scan(&self) -> anyhow::Result<()> {
+    pub async fn scan(&self) -> anyhow::Result<()> {
         let start = std::time::Instant::now();
         let config = Config::get(&std::env::current_dir()?, None)?;
         let args = RunArgs::default();
@@ -84,11 +84,7 @@ impl Backend {
 
         *self.compiled.lock().await = compiled_projects;
 
-        info!(
-            "Finished initial scan with {} in {:.2?}",
-            projects,
-            start.elapsed()
-        );
+        info!("Finished scan with {} in {:.2?}", projects, start.elapsed());
 
         Ok(())
     }

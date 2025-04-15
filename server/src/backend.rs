@@ -77,8 +77,8 @@ impl LanguageServer for Backend {
     async fn initialized(&self, _: InitializedParams) {
         info!("Server initialized");
 
-        if let Err(err) = self.initial_scan().await {
-            let msg = format!("Failed to run initial scan: {err}");
+        if let Err(err) = self.scan().await {
+            let msg = format!("Failed to run scan: {err}");
             self.client
                 .show_message(MessageType::ERROR, msg.clone())
                 .await;
@@ -91,34 +91,25 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, did_open: DidOpenTextDocumentParams) {
-        // let path: PathBuf = url_to_path(&did_open.text_document.uri.to_string()).into();
-        //
-        // self.on_change(
-        //     TextDocumentItem {
-        //         uri: did_open.text_document.uri,
-        //         language_id: did_open.text_document.language_id,
-        //         version: did_open.text_document.version,
-        //         text: did_open.text_document.text,
-        //     },
-        //     path,
-        // )
-        // .await;
+        if let Err(err) = self.scan().await {
+            let msg = format!("Failed to run scan: {err}");
+            self.client
+                .show_message(MessageType::ERROR, msg.clone())
+                .await;
+            error!("{msg}");
+        }
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        // let path: PathBuf = url_to_path(&params.text_document.uri.to_string()).into();
-        //
-        // self.on_change(
-        //     TextDocumentItem {
-        //         uri: params.text_document.uri.clone(),
-        //         language_id: "brim".to_string(),
-        //         version: params.text_document.version,
-        //         text: params.content_changes.pop().unwrap().text,
-        //     },
-        //     path,
-        // )
-        // .await;
+        if let Err(err) = self.scan().await {
+            let msg = format!("Failed to run scan: {err}");
+            self.client
+                .show_message(MessageType::ERROR, msg.clone())
+                .await;
+            error!("{msg}");
+        }
     }
+
     async fn did_save(&self, _: DidSaveTextDocumentParams) {}
 
     async fn did_close(&self, _: DidCloseTextDocumentParams) {}

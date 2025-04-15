@@ -27,7 +27,7 @@
       }
     ],
     "configuration": {
-      "brim-language-server.trace.server": {
+      "brim.trace.server": {
         "scope": "window",
         "type": "string",
         "enum": [
@@ -37,6 +37,12 @@
         ],
         "default": "verbose",
         "description": "Traces the communication between VS Code and the language server."
+      },
+      "brim.path": {
+        "scope": "resource",
+        "type": "string",
+        "default": "",
+        "description": "Path to the brim binary. If not set, the extension will use the one in your PATH."
       }
     }
   },
