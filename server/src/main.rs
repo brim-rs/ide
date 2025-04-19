@@ -1,5 +1,10 @@
+#![feature(let_chains)]
+
 use crate::backend::Backend;
-use brim::CompiledModules;
+use brim::MainContext;
+use dashmap::{DashMap, DashSet};
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_lsp::{LspService, Server};
@@ -9,8 +14,7 @@ use tracing_subscriber::EnvFilter;
 mod backend;
 mod on_change;
 mod semantic;
-
-fn test() {}
+mod span;
 
 #[tokio::main]
 async fn main() {
@@ -28,9 +32,6 @@ async fn main() {
         .expect("Failed to set global default subscriber");
 
     info!("Starting server");
-    let (service, socket) = LspService::new(|client| Backend {
-        client,
-        compiled: Arc::new(Mutex::new(CompiledModules::new())),
-    });
+    let (service, socket) = LspService::new(|client| Backend::new(client));
     Server::new(stdin, stdout, socket).serve(service).await;
 }

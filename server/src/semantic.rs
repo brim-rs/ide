@@ -1,5 +1,5 @@
 use anyhow::Result;
-use brim::ast::expr::{BinOpKind, Expr, ExprKind, Match, UnaryOp};
+use brim::ast::expr::{BinOpKind, Expr, ExprKind, Match, MatchArm, UnaryOp};
 use brim::ast::item::{
     Block, FnDecl, FnReturnType, GenericKind, Generics, ImportsKind, Item, ItemKind, Struct,
     TypeAlias, TypeAliasValue, Use, VisibilityKind,
@@ -8,6 +8,7 @@ use brim::ast::stmts::{IfStmt, Let, Stmt, StmtKind};
 use brim::ast::token::{LitKind, TokenKind};
 use brim::ast::ty::{Mutable, Ty, TyKind};
 use brim::files::{get_file, Files, SimpleFile};
+use brim::modules::Module;
 use brim::span::Span;
 use brim::transformer::HirModule;
 use brim::walker::AstWalker;
@@ -38,10 +39,9 @@ pub struct CustomSemanticToken {
     pub pos: Position,
 }
 
-pub fn semantic_tokens(module: &mut HirModule) -> Result<Vec<CustomSemanticToken>> {
+pub fn semantic_tokens(module: &mut Module) -> Result<Vec<CustomSemanticToken>> {
     let start = Instant::now();
-    info!("Starting semantic analyze");
-    let file = get_file(module.mod_id.as_usize())?;
+    let file = get_file(module.barrel.file_id)?;
     let mut analyzer = SemanticAnalyzer::new(file.clone());
 
     for comment in &module.barrel.comments {
@@ -167,11 +167,7 @@ impl AstWalker for SemanticAnalyzer {
                 }
 
                 for item in &mut external.items {
-                    match &mut item.kind {
-                        ItemKind::Fn(func) => self.visit_fn(func),
-                        ItemKind::TypeAlias(ty) => self.visit_type_alias(ty),
-                        _ => unreachable!("not allowed"),
-                    }
+                    self.walk_item(item);
                 }
             }
             ItemKind::Enum(en) => {
@@ -402,14 +398,18 @@ impl AstWalker for SemanticAnalyzer {
                 self.visit_expr(index);
             }
             ExprKind::Call(ident, args) => {
-                self.add_span(SemanticTokenType::METHOD, ident.span);
+                self.add_span(SemanticTokenType::METHOD, ident.as_ident().unwrap().span);
 
                 for arg in args {
                     self.visit_expr(arg);
                 }
             }
             ExprKind::MethodCall(idents, call) => {
-                for ident in idents {
+                for (i, ident) in idents.iter().enumerate() {
+                    if i == idents.len() - 1 {
+                        self.add_span(SemanticTokenType::METHOD, ident.span);
+                    }
+
                     self.add_span(SemanticTokenType::VARIABLE, ident.span);
                 }
 

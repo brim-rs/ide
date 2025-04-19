@@ -34,6 +34,7 @@ const startClient = async (path: string): Promise<LanguageClient> => {
       env: {
         ...process.env,
         RUST_LOG: "debug",
+        // RUST_BACKTRACE: "1",
       },
     },
   };

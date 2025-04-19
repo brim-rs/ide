@@ -1,8 +1,12 @@
 use crate::on_change::url_to_path;
 use crate::semantic::{semantic_tokens, CustomSemanticToken, LEGEND_TYPE};
-use brim::CompiledModules;
+use brim::modules::Module;
+use brim::{paths_equal, MainContext};
+use dashmap::{DashMap, DashSet};
 use serde_json::Value;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
@@ -10,10 +14,26 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 use tracing::{error, info};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Backend {
     pub client: Client,
-    pub compiled: Arc<Mutex<CompiledModules>>,
+    pub main_ctx: Arc<Mutex<MainContext>>,
+    pub files_with_diagnostics: DashSet<PathBuf>,
+    pub semantic_token_map: DashMap<PathBuf, Vec<CustomSemanticToken>>,
+    // the compiler can't get the text from file that wasn't saved, so we will use the text provided by the client and update it after initial compilation
+    pub updated_content: DashMap<PathBuf, String>,
+}
+
+impl Backend {
+    pub fn new(client: Client) -> Self {
+        Self {
+            client,
+            main_ctx: Arc::new(Mutex::new(MainContext::new())),
+            semantic_token_map: DashMap::new(),
+            files_with_diagnostics: DashSet::new(),
+            updated_content: DashMap::new(),
+        }
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -23,7 +43,7 @@ impl LanguageServer for Backend {
             server_info: None,
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::INCREMENTAL,
+                    TextDocumentSyncKind::FULL,
                 )),
                 completion_provider: Some(CompletionOptions {
                     resolve_provider: Some(false),
@@ -75,46 +95,36 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
+        self.on_change().await;
         info!("Server initialized");
-
-        if let Err(err) = self.scan().await {
-            let msg = format!("Failed to run scan: {err}");
-            self.client
-                .show_message(MessageType::ERROR, msg.clone())
-                .await;
-            error!("{msg}");
-        }
     }
 
     async fn shutdown(&self) -> Result<()> {
         Ok(())
     }
 
-    async fn did_open(&self, did_open: DidOpenTextDocumentParams) {
-        if let Err(err) = self.scan().await {
-            let msg = format!("Failed to run scan: {err}");
-            self.client
-                .show_message(MessageType::ERROR, msg.clone())
-                .await;
-            error!("{msg}");
-        }
+    async fn did_open(&self, _: DidOpenTextDocumentParams) {
+        self.on_change().await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        if let Err(err) = self.scan().await {
-            let msg = format!("Failed to run scan: {err}");
-            self.client
-                .show_message(MessageType::ERROR, msg.clone())
-                .await;
-            error!("{msg}");
-        }
+        let path = url_to_path(params.text_document.uri.as_ref());
+        let content = &params.content_changes[0].text;
+        self.updated_content.insert(path.clone(), content.clone());
+
+        self.on_change().await;
     }
 
-    async fn did_save(&self, _: DidSaveTextDocumentParams) {}
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        let path = url_to_path(params.text_document.uri.as_ref());
+        self.updated_content.remove(&path);
+
+        self.on_change().await;
+    }
 
     async fn did_close(&self, _: DidCloseTextDocumentParams) {}
 
-    async fn completion(&self, _: CompletionParams) -> Result<Option<CompletionResponse>> {
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         Ok(Some(CompletionResponse::Array(vec![
             CompletionItem::new_simple("Hello".to_string(), "Some detail".to_string()),
             CompletionItem::new_simple("Bye".to_string(), "More detail".to_string()),
@@ -143,8 +153,9 @@ impl LanguageServer for Backend {
     ) -> Result<Option<SemanticTokensResult>> {
         let path = url_to_path(params.text_document.uri.as_ref());
 
-        let data = self.to_plain_semantics(self.get_tokens(path).await);
-        info!("Returning semantic tokens full");
+        let data = self.query_tokens(path.clone());
+        let data = self.to_plain_semantics(data);
+        info!("Returning semantic tokens full with {} tokens", data.len());
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
             data,
@@ -158,7 +169,7 @@ impl LanguageServer for Backend {
         let path = url_to_path(params.text_document.uri.as_ref());
         let start = params.range.start;
         let end = params.range.end;
-        let data = self.get_tokens(path).await;
+        let data = self.query_tokens(path.clone());
 
         let filtered_tokens = data
             .iter()
@@ -178,7 +189,6 @@ impl LanguageServer for Backend {
 
         let plain_tokens = self.to_plain_semantics(filtered_tokens);
 
-        info!("Returning semantic tokens range");
         Ok(Some(SemanticTokensRangeResult::Tokens(SemanticTokens {
             result_id: None,
             data: plain_tokens,
@@ -187,30 +197,22 @@ impl LanguageServer for Backend {
 }
 
 impl Backend {
-    async fn get_compiled(&self) -> tokio::sync::MutexGuard<'_, CompiledModules> {
-        self.compiled.lock().await
+    async fn get_compiled(&self) -> tokio::sync::MutexGuard<'_, MainContext> {
+        self.main_ctx.lock().await
     }
 
-    async fn get_tokens(&self, path: PathBuf) -> Vec<CustomSemanticToken> {
-        let compiled = self.get_compiled().await;
-        let module = compiled.find_module_by_path(path);
+    pub(crate) async fn get_tokens(&self, mut module: Module) -> Vec<CustomSemanticToken> {
+        let res = semantic_tokens(&mut module);
+        if let Err(err) = res {
+            let msg = format!("Failed to run semantic analyze: {err}");
+            self.client
+                .show_message(MessageType::ERROR, msg.clone())
+                .await;
+            error!("{msg}");
 
-        if let Some(ref mut module) = module.cloned() {
-            info!("Found module for tokens_full: {:?}", module.path);
-            let res = semantic_tokens(module);
-            if let Err(err) = res {
-                let msg = format!("Failed to run semantic analyze: {err}");
-                self.client
-                    .show_message(MessageType::ERROR, msg.clone())
-                    .await;
-                error!("{msg}");
-
-                vec![]
-            } else {
-                res.unwrap()
-            }
-        } else {
             vec![]
+        } else {
+            res.unwrap()
         }
     }
 
@@ -225,5 +227,13 @@ impl Backend {
                 token_modifiers_bitset: 0,
             })
             .collect()
+    }
+
+    pub fn query_tokens(&self, path: PathBuf) -> Vec<CustomSemanticToken> {
+        self.semantic_token_map
+            .iter()
+            .find(|x| paths_equal(x.key(), &path))
+            .map(|x| x.value().clone())
+            .unwrap()
     }
 }

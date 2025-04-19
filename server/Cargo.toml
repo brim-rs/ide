@@ -8,7 +8,8 @@ anyhow = "1.0.97"
 brim = { path = "../../../brim/crates/brim" }
 percent-encoding = "2.3.1"
 serde_json = "1.0.132"
-tokio = { version = "1.41.0", features = ["full"] }
+tokio = { version = "1.44.2", features = ["full"] }
 tower-lsp = "0.20.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+dashmap = "7.0.0-rc2"

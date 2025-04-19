@@ -155,6 +155,7 @@ dependencies = [
  "brim-parser",
  "brim-shell",
  "brim-span",
+ "dashmap 7.0.0-rc2",
  "tracing",
 ]
 
@@ -252,6 +253,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "brim",
+ "dashmap 7.0.0-rc2",
  "percent-encoding",
  "serde_json",
  "tokio",
@@ -398,6 +400,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-utils"
+version = "0.8.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+
+[[package]]
 name = "dashmap"
 version = "5.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -407,6 +415,20 @@ dependencies = [
  "hashbrown 0.14.5",
  "lock_api",
  "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
+name = "dashmap"
+version = "7.0.0-rc2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4a1e35a65fe0538a60167f0ada6e195ad5d477f6ddae273943596d4a1a5730b"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "equivalent",
+ "hashbrown 0.15.2",
+ "lock_api",
  "parking_lot_core",
 ]
 
@@ -1392,7 +1414,7 @@ dependencies = [
  "async-trait",
  "auto_impl",
  "bytes",
- "dashmap",
+ "dashmap 5.5.3",
  "futures",
  "httparse",
  "lsp-types",
